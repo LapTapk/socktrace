@@ -58,7 +58,7 @@ fn install_filter() -> Result<()> {
     Ok(())
 }
 
-fn parent_procedure(target: Vec<String>) -> Result<()> {
+fn tracee_procedure(target: Vec<String>) -> Result<()> {
     unsafe {
         libc::prctl(libc::PR_SET_PTRACER, libc::PR_SET_PTRACER_ANY);
     }
@@ -78,7 +78,7 @@ fn parent_procedure(target: Vec<String>) -> Result<()> {
     }
 }
 
-fn child_procedure(sock: Option<String>) -> Result<()> {
+fn tracer_procedure(sock: Option<String>) -> Result<()> {
     Ok(())
 }
 
@@ -86,8 +86,8 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     match unsafe { unistd::fork() } {
-        Ok(unistd::ForkResult::Parent { child: _ }) => parent_procedure(args.target),
-        Ok(unistd::ForkResult::Child) => child_procedure(args.sock),
+        Ok(unistd::ForkResult::Parent { child: _ }) => tracee_procedure(args.target),
+        Ok(unistd::ForkResult::Child) => tracer_procedure(args.sock),
         Err(e) => {
             log_err!(e);
             Err(e.into())
