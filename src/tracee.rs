@@ -1,6 +1,7 @@
 use anyhow::Result;
 use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
 use nix::unistd;
+use nix::sys::signal;
 use std::ffi::CString;
 
 fn install_filter() -> Result<()> {
@@ -58,6 +59,7 @@ pub fn tracee_procedure(target: Vec<String>) -> Result<()> {
         c_target.push(CString::new(s)?);
     }
 
+    signal::raise(signal::Signal::SIGSTOP);
     match unistd::execv(&c_target[0], &c_target) {
         Ok(_) => unreachable!(),
         Err(e) => Err(e.into()),
