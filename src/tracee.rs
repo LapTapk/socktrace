@@ -59,7 +59,7 @@ pub fn tracee_procedure(target: Vec<String>) -> Result<()> {
         c_target.push(CString::new(s)?);
     }
 
-    signal::raise(signal::Signal::SIGSTOP);
+    signal::raise(signal::Signal::SIGSTOP)?;
     match unistd::execv(&c_target[0], &c_target) {
         Ok(_) => unreachable!(),
         Err(e) => Err(e.into()),
