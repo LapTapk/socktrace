@@ -21,8 +21,20 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     match unsafe { unistd::fork() } {
-        Ok(unistd::ForkResult::Parent { child: _ }) => tracee_procedure(args.target),
-        Ok(unistd::ForkResult::Child) => tracer_procedure(args.sock),
+        Ok(unistd::ForkResult::Parent { child: _ }) => {
+            let res = tracee_procedure(args.target);
+            if let Err(e) = &res {
+                crate::log_err!(e);
+            }
+            res
+        }
+        Ok(unistd::ForkResult::Child) => {
+            let res = tracer_procedure(args.sock);
+            if let Err(e) = &res {
+                crate::log_err!(e);
+            }
+            res
+        }
         Err(e) => {
             log_err!(e);
             Err(e.into())
