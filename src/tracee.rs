@@ -17,10 +17,10 @@ fn install_filter() -> Result<()> {
 
     add_rules!(filter =>
         "sendmsg",
-        "recvmsg", 
+        "recvmsg",
         "sendto",
         "recvfrom",
-        "send", 
+        "send",
         "recv",
         "read",
         "write",
@@ -33,7 +33,7 @@ fn install_filter() -> Result<()> {
         "sendfile",
         "splice",
         "vmsplice",
-        "tee", 
+        "tee",
         "copy_file_range"
     );
 
