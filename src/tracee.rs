@@ -1,7 +1,7 @@
 use anyhow::Result;
 use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
-use nix::unistd;
 use nix::sys::signal;
+use nix::unistd;
 use std::ffi::CString;
 
 fn install_filter() -> Result<()> {
