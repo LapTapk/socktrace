@@ -42,7 +42,7 @@ impl Tracer {
         Ok(s.to_string())
     }
 
-    fn handle_bind(&mut self, regs: libc::user_regs_struct) -> Result<()> {
+    fn is_unix_family(&self, regs: &libc::user_regs_struct) -> Result<bool> {
         let mut family_u8_arr: [u8; 4] = [0 as u8; 4];
         let family_ioslice = IoSliceMut::new(&mut family_u8_arr);
         let family_rem = RemoteIoVec {
@@ -53,7 +53,11 @@ impl Tracer {
 
         let family = i32::from_ne_bytes(family_u8_arr);
 
-        if family != libc::AF_UNIX {
+        Ok(family == libc::AF_UNIX)
+    }
+
+    fn handle_bind_connect(&mut self, regs: libc::user_regs_struct) -> Result<()> {
+        if !self.is_unix_family(&regs)? {
             return Ok(());
         }
 
@@ -62,14 +66,14 @@ impl Tracer {
         if target_sock.as_ref().is_none_or(|s| &sockaddr == s) {
             self.track_fds.insert(regs.rdi as i32);
         }
-
         Ok(())
     }
 
     fn handle_seccomp(&mut self) -> Result<()> {
         let regs = ptrace::getregs(self.pid)?;
         match regs.rax as i64 {
-            libc::SYS_bind => self.handle_bind(regs)?,
+            libc::SYS_bind => self.handle_bind_connect(regs)?,
+            libc::SYS_connect => self.handle_bind_connect(regs)?,
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
