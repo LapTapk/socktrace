@@ -30,7 +30,9 @@ fn install_filter() -> Result<()> {
         "splice",
         "vmsplice",
         "tee",
-        "copy_file_range"
+        "copy_file_range",
+        "bind",
+        "connect"
     );
 
     filter.load()?;
