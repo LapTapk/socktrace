@@ -1,6 +1,7 @@
 mod log;
 mod tracee;
 mod tracer;
+mod outman;
 
 use crate::tracee::tracee_procedure;
 use crate::tracer::tracer_procedure;
