@@ -1,7 +1,7 @@
 mod log;
+mod outman;
 mod tracee;
 mod tracer;
-mod outman;
 
 use crate::tracee::tracee_procedure;
 use crate::tracer::tracer_procedure;
@@ -13,6 +13,9 @@ use nix::unistd;
 struct Cli {
     #[arg(env = "SOCKTRACE_SOCK")]
     sock: Option<String>,
+
+    #[arg(env = "SOCKTRACE_OUT")]
+    outdir: String,
 
     #[arg(env = "SOCKTRACE_TARGET")]
     target: Vec<String>,
