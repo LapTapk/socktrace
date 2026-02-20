@@ -1,3 +1,4 @@
+use crate::output::write_sock;
 use anyhow::Result;
 use nix::sys::ptrace;
 use nix::sys::ptrace::Options;
@@ -5,28 +6,55 @@ use nix::sys::signal::Signal;
 use nix::sys::uio::{RemoteIoVec, process_vm_readv};
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::io::IoSliceMut;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use tokio::{sync::mpsc, task::JoinHandle, task::JoinSet};
 
 static TX: OnceLock<mpsc::UnboundedSender<unistd::Pid>> = OnceLock::new();
 static SOCK: OnceLock<Option<String>> = OnceLock::new();
+static OUTDIR: OnceLock<PathBuf> = OnceLock::new();
 
 const SECCOMP_EVENT: i32 = Signal::SIGTRAP as i32 | ptrace::Event::PTRACE_EVENT_SECCOMP as i32;
 
+struct Socket {
+    fd: i32,
+    name: String,
+}
+
 struct Tracer {
     pid: unistd::Pid,
-    track_fds: HashSet<i32>,
+    track_fds: HashMap<i32, Socket>,
 }
 
 impl Tracer {
     pub fn new(pid: unistd::Pid) -> Self {
         Self {
             pid,
-            track_fds: HashSet::new(),
+            track_fds: HashMap::new(),
         }
+    }
+
+    fn handle_sendto(&self, regs: libc::user_regs_struct) -> Result<()> {
+        let fd = regs.rdi as i32;
+        let sock = match self.track_fds.get(&fd) {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        let mut buf = vec![0 as u8; regs.rdx as usize];
+        let buf_ioslice = IoSliceMut::new(&mut buf);
+        let buf_remote = RemoteIoVec {
+            base: regs.rsi as usize,
+            len: regs.rdx as usize,
+        };
+        process_vm_readv(self.pid, &mut [buf_ioslice], &[buf_remote])?;
+
+        write_sock(&OUTDIR.get().unwrap(), sock.fd, &sock.name, false, &buf)?;
+
+        Ok(())
     }
 
     fn read_unix_path(&self, sockaddr_ptr: usize) -> Result<String> {
@@ -64,7 +92,12 @@ impl Tracer {
         let sockaddr = self.read_unix_path(regs.rsi as usize)?;
         let target_sock = SOCK.get().unwrap();
         if target_sock.as_ref().is_none_or(|s| &sockaddr == s) {
-            self.track_fds.insert(regs.rdi as i32);
+            let fd = regs.rdi as i32;
+            let socket = Socket {
+                fd: fd,
+                name: sockaddr,
+            };
+            self.track_fds.insert(fd, socket);
         }
         Ok(())
     }
@@ -74,6 +107,7 @@ impl Tracer {
         match regs.rax as i64 {
             libc::SYS_bind => self.handle_bind_connect(regs)?,
             libc::SYS_connect => self.handle_bind_connect(regs)?,
+            libc::SYS_sendto => self.handle_sendto(regs)?,
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
@@ -143,7 +177,7 @@ fn init_sup(pid: unistd::Pid) -> JoinHandle<()> {
 }
 
 #[tokio::main]
-pub async fn tracer_procedure(sock: Option<String>) -> Result<()> {
+pub async fn tracer_procedure(sock: Option<String>, outdir: PathBuf) -> Result<()> {
     /*
      * TODO
      * seize with ptrace
@@ -155,6 +189,7 @@ pub async fn tracer_procedure(sock: Option<String>) -> Result<()> {
      * otherwise => continue
      */
     SOCK.get_or_init(move || sock);
+    OUTDIR.get_or_init(move || outdir);
 
     let tracee_pid = unistd::getppid();
     init_sup(tracee_pid).await?;
