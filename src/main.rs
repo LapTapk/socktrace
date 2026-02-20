@@ -1,5 +1,5 @@
 mod log;
-mod outman;
+mod output;
 mod tracee;
 mod tracer;
 
