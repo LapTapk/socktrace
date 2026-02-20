@@ -31,6 +31,7 @@ const FORK_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_F
 const VFORK_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_VFORK as i32) << 8);
 const EXEC_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_EXEC as i32) << 8);
 
+#[derive(Clone, Debug)]
 struct Socket {
     fd: i32,
     name: String,
@@ -150,6 +151,14 @@ impl Tracer {
 
     fn new_process(&self) -> Result<()> {
         let newpid = unistd::Pid::from_raw(ptrace::getevent(self.tid)? as i32);
+        let conf = get_conf()?;
+        let fd_maps_read = read_rwlock(&conf.fd_maps)?;
+        let current_fd_map = fd_maps_read
+            .get(&self.tgid)
+            .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?;
+        let new_fd_map = Arc::new(RwLock::new((*(read_rwlock(&current_fd_map)?)).clone()));
+
+        write_rwlock(&conf.fd_maps)?.insert(newpid, new_fd_map);
         get_conf()?.tx.send((newpid, newpid))?;
         Ok(())
     }
