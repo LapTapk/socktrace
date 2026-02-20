@@ -152,13 +152,8 @@ impl Tracer {
     fn new_process(&self) -> Result<()> {
         let newpid = unistd::Pid::from_raw(ptrace::getevent(self.tid)? as i32);
         let conf = get_conf()?;
-        let fd_maps_read = read_rwlock(&conf.fd_maps)?;
-        let current_fd_map = read_rwlock(
-            fd_maps_read
-                .get(&self.tgid)
-                .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?,
-        )?;
-        let new_fd_map = Arc::new(RwLock::new((*current_fd_map).clone()));
+        let fd_map_read = read_rwlock(&self.track_fds)?;
+        let new_fd_map = Arc::new(RwLock::new((*fd_map_read).clone()));
 
         write_rwlock(&conf.fd_maps)?.insert(newpid, new_fd_map);
         get_conf()?.tx.send((newpid, newpid))?;
@@ -172,34 +167,26 @@ impl Tracer {
     }
 
     fn rebuild_fd_map(&self) -> Result<()> {
+        let fd_map_read = read_rwlock(&self.track_fds)?;
+        let proc_path = format!("/proc/{}/fd", self.tgid);
+        let mut inherited_fds: Vec<i32> = Vec::new();
+
+        for fd_file in std::fs::read_dir(proc_path)? {
+            let fd_file = fd_file?;
+            let fd_filename = fd_file.file_name().into_string().unwrap();
+            let fd = i32::from_str_radix(&fd_filename, 10)?;
+            inherited_fds.push(fd);
+        }
+
+        let new_fd_map = Arc::new(RwLock::new(
+            inherited_fds
+                .iter()
+                .filter_map(|k| fd_map_read.get(k).map(|v| (*k, v.clone())))
+                .collect::<HashMap<i32, Socket>>(),
+        ));
+
         let conf = get_conf()?;
-        let mut fd_maps_write = write_rwlock(&conf.fd_maps)?;
-
-        let new_fd_map = {
-            let current_fd_map = read_rwlock(
-                fd_maps_write
-                    .get(&self.tgid)
-                    .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?,
-            )?;
-            let proc_path = format!("/proc/{}/fd", self.tgid);
-            let mut inherited_fds: Vec<i32> = Vec::new();
-
-            for fd_file in std::fs::read_dir(proc_path)? {
-                let fd_file = fd_file?;
-                let fd_filename = fd_file.file_name().into_string().unwrap();
-                let fd = i32::from_str_radix(&fd_filename, 10)?;
-                inherited_fds.push(fd);
-            }
-
-            Arc::new(RwLock::new(
-                inherited_fds
-                    .iter()
-                    .filter_map(|k| current_fd_map.get(k).map(|v| (*k, v.clone())))
-                    .collect::<HashMap<i32, Socket>>(),
-            ))
-        };
-
-        fd_maps_write.insert(self.tgid, new_fd_map);
+        write_rwlock(&conf.fd_maps)?.insert(self.tgid, new_fd_map);
 
         Ok(())
     }
