@@ -20,8 +20,6 @@ fn install_filter() -> Result<()> {
         "recvmsg",
         "sendto",
         "recvfrom",
-        "send",
-        "recv",
         "read",
         "write",
         "readv",
