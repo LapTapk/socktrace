@@ -33,7 +33,7 @@ fn main() -> Result<()> {
             res
         }
         Ok(unistd::ForkResult::Child) => {
-            let res = tracer_procedure(args.sock);
+            let res = tracer_procedure(args.sock, args.outdir);
             if let Err(e) = &res {
                 crate::log_err!(e);
             }
