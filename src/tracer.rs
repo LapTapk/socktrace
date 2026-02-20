@@ -17,7 +17,12 @@ static TX: OnceLock<mpsc::UnboundedSender<unistd::Pid>> = OnceLock::new();
 static SOCK: OnceLock<Option<String>> = OnceLock::new();
 static OUTDIR: OnceLock<PathBuf> = OnceLock::new();
 
-const SECCOMP_EVENT: i32 = Signal::SIGTRAP as i32 | ptrace::Event::PTRACE_EVENT_SECCOMP as i32;
+const SECCOMP_EVENT: i32 =
+    Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_SECCOMP as i32) << 8);
+const CLONE_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_CLONE as i32) << 8);
+const FORK_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_FORK as i32) << 8);
+const VFORK_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_VFORK as i32) << 8);
+const EXEC_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_EXEC as i32) << 8);
 
 struct Socket {
     fd: i32,
@@ -112,9 +117,21 @@ impl Tracer {
         Ok(())
     }
 
+    fn new_process(&self) -> Result<()> {
+        let newpid = unistd::Pid::from_raw(ptrace::getevent(self.pid)? as i32);
+        TX.get().unwrap().send(newpid)?;
+        Ok(())
+    }
+
+    fn reset(&self) -> Result<()> {
+        Ok(())
+    }
+
     fn handle_ev(&mut self, ev: i32) -> Result<()> {
         match ev >> 8 {
             SECCOMP_EVENT => self.handle_seccomp(),
+            CLONE_EVENT | FORK_EVENT | VFORK_EVENT => self.new_process(),
+            EXEC_EVENT => self.reset(),
             _ => Ok(()),
         }
     }
