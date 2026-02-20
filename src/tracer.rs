@@ -153,10 +153,12 @@ impl Tracer {
         let newpid = unistd::Pid::from_raw(ptrace::getevent(self.tid)? as i32);
         let conf = get_conf()?;
         let fd_maps_read = read_rwlock(&conf.fd_maps)?;
-        let current_fd_map = fd_maps_read
-            .get(&self.tgid)
-            .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?;
-        let new_fd_map = Arc::new(RwLock::new((*(read_rwlock(&current_fd_map)?)).clone()));
+        let current_fd_map = read_rwlock(
+            fd_maps_read
+                .get(&self.tgid)
+                .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?,
+        )?;
+        let new_fd_map = Arc::new(RwLock::new((*current_fd_map).clone()));
 
         write_rwlock(&conf.fd_maps)?.insert(newpid, new_fd_map);
         get_conf()?.tx.send((newpid, newpid))?;
@@ -169,7 +171,36 @@ impl Tracer {
         Ok(())
     }
 
-    fn reset(&self) -> Result<()> {
+    fn rebuild_fd_map(&self) -> Result<()> {
+        let conf = get_conf()?;
+        let mut fd_maps_write = write_rwlock(&conf.fd_maps)?;
+
+        let new_fd_map = {
+            let current_fd_map = read_rwlock(
+                fd_maps_write
+                    .get(&self.tgid)
+                    .ok_or(anyhow!("Tracer's tgid not found in CONF.fd_maps"))?,
+            )?;
+            let proc_path = format!("/proc/{}/fd", self.tgid);
+            let mut inherited_fds: Vec<i32> = Vec::new();
+
+            for fd_file in std::fs::read_dir(proc_path)? {
+                let fd_file = fd_file?;
+                let fd_filename = fd_file.file_name().into_string().unwrap();
+                let fd = i32::from_str_radix(&fd_filename, 10)?;
+                inherited_fds.push(fd);
+            }
+
+            Arc::new(RwLock::new(
+                inherited_fds
+                    .iter()
+                    .filter_map(|k| current_fd_map.get(k).map(|v| (*k, v.clone())))
+                    .collect::<HashMap<i32, Socket>>(),
+            ))
+        };
+
+        fd_maps_write.insert(self.tgid, new_fd_map);
+
         Ok(())
     }
 
@@ -178,7 +209,7 @@ impl Tracer {
             SECCOMP_EVENT => self.handle_seccomp(),
             CLONE_EVENT => self.new_thread(),
             FORK_EVENT | VFORK_EVENT => self.new_process(),
-            EXEC_EVENT => self.reset(),
+            EXEC_EVENT => self.rebuild_fd_map(),
             _ => Ok(()),
         }
     }
