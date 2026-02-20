@@ -32,7 +32,8 @@ fn install_filter() -> Result<()> {
         "tee",
         "copy_file_range",
         "bind",
-        "connect"
+        "connect",
+        "close"
     );
 
     filter.load()?;
