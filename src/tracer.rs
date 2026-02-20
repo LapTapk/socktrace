@@ -37,7 +37,7 @@ impl Tracer {
         }
     }
 
-    fn handle_sendto(&self, regs: libc::user_regs_struct) -> Result<()> {
+    fn check_sending_data(&self, regs: libc::user_regs_struct) -> Result<()> {
         let fd = regs.rdi as i32;
         let sock = match self.track_fds.get(&fd) {
             Some(s) => s,
@@ -84,7 +84,7 @@ impl Tracer {
         Ok(family == libc::AF_UNIX)
     }
 
-    fn handle_bind_connect(&mut self, regs: libc::user_regs_struct) -> Result<()> {
+    fn check_new_fd(&mut self, regs: libc::user_regs_struct) -> Result<()> {
         if !self.is_unix_family(&regs)? {
             return Ok(());
         }
@@ -105,9 +105,8 @@ impl Tracer {
     fn handle_seccomp(&mut self) -> Result<()> {
         let regs = ptrace::getregs(self.pid)?;
         match regs.rax as i64 {
-            libc::SYS_bind => self.handle_bind_connect(regs)?,
-            libc::SYS_connect => self.handle_bind_connect(regs)?,
-            libc::SYS_sendto => self.handle_sendto(regs)?,
+            libc::SYS_bind | libc::SYS_connect => self.check_new_fd(regs)?,
+            libc::SYS_sendto => self.check_sending_data(regs)?,
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
@@ -180,13 +179,7 @@ fn init_sup(pid: unistd::Pid) -> JoinHandle<()> {
 pub async fn tracer_procedure(sock: Option<String>, outdir: PathBuf) -> Result<()> {
     /*
      * TODO
-     * seize with ptrace
-     * options: tracesysgood fork vfork clone seccomp exec
-     *
-     * waitpid
-     * dispatch based on the result of waitpid
-     * if ptrace event => do smth
-     * otherwise => continue
+     * handle fork, vfork, clone and exec
      */
     SOCK.get_or_init(move || sock);
     OUTDIR.get_or_init(move || outdir);
