@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn write_sock(outdir: PathBuf, fd: i32, name: &String, inside: bool, buf: &[u8]) -> Result<()> {
+pub fn write_sock(outdir: &PathBuf, fd: i32, name: &String, inside: bool, buf: &[u8]) -> Result<()> {
     let t = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
