@@ -8,6 +8,7 @@ use crate::tracer::tracer_procedure;
 use anyhow::Result;
 use clap::Parser;
 use nix::unistd;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -15,7 +16,7 @@ struct Cli {
     sock: Option<String>,
 
     #[arg(env = "SOCKTRACE_OUT")]
-    outdir: String,
+    outdir: PathBuf,
 
     #[arg(env = "SOCKTRACE_TARGET")]
     target: Vec<String>,
