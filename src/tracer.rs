@@ -34,7 +34,7 @@ const EXEC_EVENT: i32 = Signal::SIGTRAP as i32 | ((ptrace::Event::PTRACE_EVENT_E
 #[derive(Clone, Debug)]
 struct Socket {
     fd: i32,
-    name: String,
+    name: Arc<String>,
 }
 
 type PerProcFdMap = Arc<RwLock<HashMap<i32, Socket>>>;
@@ -138,7 +138,7 @@ impl Tracer {
             let fd = regs.rdi as i32;
             let socket = Socket {
                 fd: fd,
-                name: sockaddr,
+                name: Arc::new(sockaddr),
             };
 
             let mut track_fds_write = write_rwlock(&self.track_fds)?;
