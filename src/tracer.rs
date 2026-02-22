@@ -71,7 +71,7 @@ impl Tracer {
         })
     }
 
-    fn intercept_sendto_recvfrom(
+    fn intercept_sendto_recvfrom_write_read(
         &self,
         regs: libc::user_regs_struct,
         is_sendto: bool,
@@ -151,8 +151,12 @@ impl Tracer {
         let regs = ptrace::getregs(self.tid)?;
         match regs.rax as i64 {
             libc::SYS_bind | libc::SYS_connect => self.check_new_fd(regs)?,
-            libc::SYS_sendto => self.intercept_sendto_recvfrom(regs, true)?,
-            libc::SYS_recvfrom => self.intercept_sendto_recvfrom(regs, false)?,
+            libc::SYS_sendto | libc::SYS_write => {
+                self.intercept_sendto_recvfrom_write_read(regs, true)?
+            }
+            libc::SYS_recvfrom | libc::SYS_read => {
+                self.intercept_sendto_recvfrom_write_read(regs, false)?
+            }
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
