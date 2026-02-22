@@ -71,6 +71,65 @@ impl Tracer {
         })
     }
 
+    fn intercept_sendmsg_recvmsg(
+        &self,
+        regs: libc::user_regs_struct,
+        is_sendmsg: bool,
+    ) -> Result<()> {
+        let sock = match self.get_sock(regs)? {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        let msghdr_size = std::mem::size_of::<libc::msghdr>();
+        let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
+        let msghdr_u8_arr = unsafe {
+            std::slice::from_raw_parts_mut(
+                (&mut msghdr as *mut libc::msghdr) as *mut u8,
+                msghdr_size,
+            )
+        };
+        let msghdr_ioslice = IoSliceMut::new(msghdr_u8_arr);
+        let msghdr_remote = RemoteIoVec {
+            base: regs.rsi as usize,
+            len: msghdr_size,
+        };
+        process_vm_readv(self.tid, &mut [msghdr_ioslice], &[msghdr_remote])?;
+
+        let mut bufs: Vec<Vec<u8>> = Vec::with_capacity(msghdr.msg_iovlen);
+        let mut remotes: Vec<RemoteIoVec> = Vec::with_capacity(msghdr.msg_iovlen);
+        unsafe {
+            let iovs: &mut [libc::iovec] =
+                std::slice::from_raw_parts_mut(msghdr.msg_iov, msghdr.msg_iovlen as usize);
+
+            for iov in iovs.iter_mut() {
+                let buf = vec![0 as u8; iov.iov_len];
+                let remote = RemoteIoVec {
+                    base: iov.iov_base as usize,
+                    len: iov.iov_len as usize,
+                };
+                remotes.push(remote);
+                bufs.push(buf);
+            }
+        }
+        let mut slices: Vec<IoSliceMut> = bufs
+            .iter_mut()
+            .map(|b| std::io::IoSliceMut::new(b))
+            .collect();
+
+        process_vm_readv(self.tid, slices.as_mut_slice(), remotes.as_slice())?;
+
+        write_sock(
+            &get_conf()?.outdir,
+            sock.fd,
+            &sock.name,
+            is_sendmsg,
+            &bufs.concat(),
+        )?;
+
+        Ok(())
+    }
+
     fn intercept_sendto_recvfrom_write_read(
         &self,
         regs: libc::user_regs_struct,
@@ -157,6 +216,8 @@ impl Tracer {
             libc::SYS_recvfrom | libc::SYS_read => {
                 self.intercept_sendto_recvfrom_write_read(regs, false)?
             }
+            libc::SYS_sendmsg => self.intercept_sendmsg_recvmsg(regs, true)?,
+            libc::SYS_recvmsg => self.intercept_sendmsg_recvmsg(regs, false)?,
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
