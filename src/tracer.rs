@@ -71,10 +71,12 @@ impl Tracer {
         })
     }
 
-    fn intercept_sendto(&self, regs: libc::user_regs_struct) -> Result<()> {
-        let fd = regs.rdi as i32;
-        let track_fds_read = read_rwlock(&self.track_fds)?;
-        let sock = match track_fds_read.get(&fd) {
+    fn intercept_sendto_recvfrom(
+        &self,
+        regs: libc::user_regs_struct,
+        is_sendto: bool,
+    ) -> Result<()> {
+        let sock = match self.get_sock(regs)? {
             Some(s) => s,
             None => return Ok(()),
         };
@@ -87,9 +89,15 @@ impl Tracer {
         };
         process_vm_readv(self.tid, &mut [buf_ioslice], &[buf_remote])?;
 
-        write_sock(&get_conf()?.outdir, sock.fd, &sock.name, false, &buf)?;
+        write_sock(&get_conf()?.outdir, sock.fd, &sock.name, is_sendto, &buf)?;
 
         Ok(())
+    }
+
+    fn get_sock(&self, regs: libc::user_regs_struct) -> Result<Option<Socket>> {
+        let fd = regs.rdi as i32;
+        let track_fds_read = read_rwlock(&self.track_fds)?;
+        Ok(track_fds_read.get(&fd).map(|x| x.clone()))
     }
 
     fn read_unix_path(&self, sockaddr_ptr: usize) -> Result<String> {
@@ -143,7 +151,8 @@ impl Tracer {
         let regs = ptrace::getregs(self.tid)?;
         match regs.rax as i64 {
             libc::SYS_bind | libc::SYS_connect => self.check_new_fd(regs)?,
-            libc::SYS_sendto => self.intercept_sendto(regs)?,
+            libc::SYS_sendto => self.intercept_sendto_recvfrom(regs, true)?,
+            libc::SYS_recvfrom => self.intercept_sendto_recvfrom(regs, false)?,
             _ => return Err(anyhow::Error::msg("Unregistered syscall")),
         }
         Ok(())
