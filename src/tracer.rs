@@ -337,11 +337,6 @@ async fn supervisor(tid: unistd::Pid, mut rx: mpsc::UnboundedReceiver<NewTracerC
 
 #[tokio::main]
 pub async fn tracer_procedure(sock: Option<String>, outdir: PathBuf) -> Result<()> {
-    /*
-     * TODO
-     * handle fork, vfork, clone and exec
-     */
-
     let tracee_pid = unistd::getppid();
     let (tx, rx) = mpsc::unbounded_channel::<NewTracerConf>();
 
