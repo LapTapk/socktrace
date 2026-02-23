@@ -12,14 +12,14 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 struct Cli {
-    #[arg(env = "SOCKTRACE_SOCK")]
-    sock: Option<String>,
-
     #[arg(env = "SOCKTRACE_OUT")]
     outdir: PathBuf,
 
     #[arg(env = "SOCKTRACE_TARGET")]
     target: Vec<String>,
+    
+    #[arg(long, env = "SOCKTRACE_SOCK")]
+    sock: Option<String>,
 }
 
 fn main() -> Result<()> {
