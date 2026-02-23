@@ -96,8 +96,8 @@ impl Tracer {
         };
         process_vm_readv(self.tid, &mut [msghdr_ioslice], &[msghdr_remote])?;
 
-        let mut bufs: Vec<Vec<u8>> = Vec::with_capacity(msghdr.msg_iovlen);
-        let mut remotes: Vec<RemoteIoVec> = Vec::with_capacity(msghdr.msg_iovlen);
+        let mut bufs: Vec<Vec<u8>> = Vec::with_capacity(msghdr.msg_iovlen as usize);
+        let mut remotes: Vec<RemoteIoVec> = Vec::with_capacity(msghdr.msg_iovlen as usize);
         unsafe {
             let iovs: &mut [libc::iovec] =
                 std::slice::from_raw_parts_mut(msghdr.msg_iov, msghdr.msg_iovlen as usize);
