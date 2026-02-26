@@ -8,6 +8,7 @@ use crate::tracer::tracer_procedure;
 use anyhow::Result;
 use clap::Parser;
 use nix::unistd;
+use std::fs::create_dir_all;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -17,13 +18,15 @@ struct Cli {
 
     #[arg(env = "SOCKTRACE_TARGET")]
     target: Vec<String>,
-    
+
     #[arg(long, env = "SOCKTRACE_SOCK")]
     sock: Option<String>,
 }
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+
+    create_dir_all(&args.outdir)?;
 
     match unsafe { unistd::fork() } {
         Ok(unistd::ForkResult::Parent { child: _ }) => {
